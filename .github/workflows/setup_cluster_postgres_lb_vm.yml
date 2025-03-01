@@ -19,7 +19,7 @@ jobs:
 
       - name: Configurar Cluster PostgreSQL
         run: |
-          echo "${{ secrets.ID_ED25519 }}" | tr -d '\r' > private_key.pem
+          echo "${{ secrets.ID_ED25519_MESSIAS }}" | tr -d '\r' > private_key.pem
           chmod 600 private_key.pem
 
           ssh -i private_key.pem -o StrictHostKeyChecking=no ubuntu@${{ matrix.host }} << 'EOF'
