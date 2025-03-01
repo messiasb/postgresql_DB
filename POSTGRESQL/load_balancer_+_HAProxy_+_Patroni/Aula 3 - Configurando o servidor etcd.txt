@@ -1,0 +1,222 @@
+// Aula 3 - Configurando o servidor etcd
+
+# sed -i "s/SELINUX=enforcing/SELINUX=disabled/" /etc/selinux/config
+
+# setenforce 0
+
+# systemctl disable --now firewalld.service
+
+# sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+# dnf --enablerepo=pgdg-rhel9-extras install -y etcd
+
+# mkdir cert
+
+# cd cert
+
+# cat <<EOF > etcd_cert.cnf
+[req]
+default_bits  = 4096
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+countryName = BR
+stateOrProvinceName = SP
+localityName = Sao Paulo
+organizationName = Lab
+commonName = etcd-host
+
+[v3_req]
+keyUsage = digitalSignature, keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @alt_names
+
+[alt_names]
+IP.1 = 127.0.0.1
+IP.2 = 192.168.15.172
+IP.3 = 192.168.15.173
+IP.4 = 192.168.15.174
+DNS.1 = localhost
+EOF
+
+ps: Acrescente os IP se for usar mais servidores ETCD!
+
+# openssl req -x509 -noenc -newkey rsa:4096 -subj '/CN=labCA' -keyout ca_key.pem -out ca_cert.pem -days 36500
+
+# openssl req -noenc -newkey rsa:4096 -keyout etcd_key.pem -out etcd_cert.csr -config etcd_cert.cnf
+
+# openssl req -in etcd_cert.csr  -noout -text
+
+# openssl x509 -req -days 36500 -in etcd_cert.csr -CA ca_cert.pem -CAkey ca_key.pem -out etcd_cert.pem -copy_extensions copy
+
+# openssl x509 -text -noout -in etcd_cert.pem
+
+# mkdir -p /etc/etcd/cert
+
+# cd /etc/etcd/cert
+
+# cp ca_cert.pem  etcd_cert.cnf  etcd_cert.csr  etcd_cert.pem  etcd_key.pem /etc/etcd/cert
+
+# mkdir -p /etc/etcd/cert/
+
+pghaproxy ~]# scp -rp /etc/etcd/cert/* root@pgha3:/etc/etcd/cert/
+
+pghaproxy ~]# scp -rp /etc/etcd/cert/* root@pghaproxy2:/etc/etcd/cert/
+
+# chown -R etcd:etcd /etc/etcd/
+
+# chmod 0750 -R /etc/etcd/
+
+# mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.bk
+
+# vim /etc/etcd/etcd.conf
+
+name: 'etcd0'
+data-dir: /var/lib/etcd/default.etcd
+listen-peer-urls: https://192.168.15.172:2380
+listen-client-urls: https://localhost:2379,https://192.168.15.172:2379
+initial-advertise-peer-urls: https://192.168.15.172:2380
+advertise-client-urls: https://192.168.15.172:2379
+initial-cluster: "etcd0=https://192.168.15.172:2380,etcd1=https://192.168.15.173:2380,etcd2=https://192.168.15.174:2380"
+initial-cluster-token: 'etcd-cluster-1'
+initial-cluster-state: 'new'
+
+client-transport-security:
+  # Path to the client server TLS cert file.
+  cert-file: /etc/etcd/cert/etcd_cert.pem
+  # Path to the client server TLS key file.
+  key-file: /etc/etcd/cert/etcd_key.pem
+  # Enable client cert authentication.
+  client-cert-auth: false
+  # Path to the client server TLS trusted CA cert file.
+  trusted-ca-file: /etc/etcd/cert/ca_cert.pem
+  # Client TLS using generated certificates
+  auto-tls: false
+  
+peer-transport-security:
+  # Path to the peer server TLS cert file.
+  cert-file: /etc/etcd/cert/etcd_cert.pem
+  # Path to the peer server TLS key file.
+  key-file: /etc/etcd/cert/etcd_key.pem
+  # Enable peer client cert authentication.
+  client-cert-auth: false
+  # Path to the peer server TLS trusted CA cert file.
+  trusted-ca-file: /etc/etcd/cert/ca_cert.pem
+  # Peer TLS using generated certificates.
+  auto-tls: false
+  
+# Enable debug-level logging for etcd.
+log-level: info
+
+# mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.bk
+
+# vim /etc/etcd/etcd.conf
+
+name: 'etcd1'
+data-dir: /var/lib/etcd/default.etcd
+listen-peer-urls: https://192.168.15.173:2380
+listen-client-urls: https://localhost:2379,https://192.168.15.173:2379
+initial-advertise-peer-urls: https://192.168.15.173:2380
+advertise-client-urls: https://192.168.15.173:2379
+initial-cluster: "etcd0=https://192.168.15.172:2380,etcd1=https://192.168.15.173:2380,etcd2=https://192.168.15.174:2380"
+initial-cluster-token: 'etcd-cluster-1'
+initial-cluster-state: 'new'
+
+client-transport-security:
+  # Path to the client server TLS cert file.
+  cert-file: /etc/etcd/cert/etcd_cert.pem
+  # Path to the client server TLS key file.
+  key-file: /etc/etcd/cert/etcd_key.pem
+  # Enable client cert authentication.
+  client-cert-auth: false
+  # Path to the client server TLS trusted CA cert file.
+  trusted-ca-file: /etc/etcd/cert/ca_cert.pem
+  # Client TLS using generated certificates
+  auto-tls: false
+  
+peer-transport-security:
+  # Path to the peer server TLS cert file.
+  cert-file: /etc/etcd/cert/etcd_cert.pem
+  # Path to the peer server TLS key file.
+  key-file: /etc/etcd/cert/etcd_key.pem
+  # Enable peer client cert authentication.
+  client-cert-auth: false
+  # Path to the peer server TLS trusted CA cert file.
+  trusted-ca-file: /etc/etcd/cert/ca_cert.pem
+  # Peer TLS using generated certificates.
+  auto-tls: false
+  
+# Enable debug-level logging for etcd.
+log-level: info
+
+Para o 'etcd2':
+
+# mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.bk
+
+# vim /etc/etcd/etcd.conf
+
+name: 'etcd2'
+data-dir: /var/lib/etcd/default.etcd
+listen-peer-urls: https://192.168.15.174:2380
+listen-client-urls: https://localhost:2379,https://192.168.15.174:2379
+initial-advertise-peer-urls: https://192.168.15.174:2380
+advertise-client-urls: https://192.168.15.174:2379
+initial-cluster: "etcd0=https://192.168.15.172:2380,etcd1=https://192.168.15.173:2380,etcd2=https://192.168.15.174:2380"
+initial-cluster-token: 'etcd-cluster-1'
+initial-cluster-state: 'new'
+
+client-transport-security:
+  # Path to the client server TLS cert file.
+  cert-file: /etc/etcd/cert/etcd_cert.pem
+  # Path to the client server TLS key file.
+  key-file: /etc/etcd/cert/etcd_key.pem
+  # Enable client cert authentication.
+  client-cert-auth: false
+  # Path to the client server TLS trusted CA cert file.
+  trusted-ca-file: /etc/etcd/cert/ca_cert.pem
+  # Client TLS using generated certificates
+  auto-tls: false
+  
+peer-transport-security:
+  # Path to the peer server TLS cert file.
+  cert-file: /etc/etcd/cert/etcd_cert.pem
+  # Path to the peer server TLS key file.
+  key-file: /etc/etcd/cert/etcd_key.pem
+  # Enable peer client cert authentication.
+  client-cert-auth: false
+  # Path to the peer server TLS trusted CA cert file.
+  trusted-ca-file: /etc/etcd/cert/ca_cert.pem
+  # Peer TLS using generated certificates.
+  auto-tls: false
+  
+# Enable debug-level logging for etcd.
+log-level: info
+
+# systemctl enable --now etcd.service
+
+# systemctl restart etcd
+
+# ss -tunelp | grep 2379
+
+# ss -tunelp | grep 2380
+
+E vamos ver os membros do nosso cluster:
+
+# etcdctl --endpoints=https://192.168.15.172:2379,https://192.168.15.173:2379,https://192.168.15.174:2379 --cacert=ca_cert.pem --cert=etcd_cert.pem --key=etcd_key.pem member list
+
+# etcdctl --endpoints=https://192.168.15.172:2379,https://192.168.15.173:2379,https://192.168.15.174:2379 --cacert=ca_cert.pem --cert=etcd_cert.pem --key=etcd_key.pem endpoint status -w table
+
+# etcdctl --endpoints=https://192.168.15.172:2379,https://192.168.15.173:2379,https://192.168.15.174:2379 --cacert=ca_cert.pem --cert=etcd_cert.pem --key=etcd_key.pem endpoint health
+
+Troubleshooting
+
+# rm -rf /var/lib/etcd/default.etcd
+
+# systemctl start etcd
+
+
+
+
+

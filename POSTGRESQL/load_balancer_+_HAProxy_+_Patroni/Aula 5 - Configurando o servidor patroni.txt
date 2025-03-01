@@ -1,0 +1,434 @@
+// Aula 4 - Configurando o servidor patroni
+
+# dnf install -y python3-devel
+# pip3 install --upgrade setuptools
+
+# su - postgres
+$ pip3 install --user  psycopg2-binary
+$ pip3 install --user  python-etcd
+$ pip3 install --user wheel
+$ pip3 install --user patroni
+
+# ls /var/lib/pgsql/.local/bin/
+
+# ln -s /var/lib/pgsql/.local/bin/* /usr/sbin/
+
+# cd /usr/lib/systemd/system/
+
+# sudo tee patroni.service <<EOL
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+ExecStart=/var/lib/pgsql/.local/bin/patroni  /etc/patroni.yaml
+KillMode=process
+TimeoutSec=30
+Restart=no
+[Install]
+WantedBy=multi-user.target
+EOL
+
+pg_node1
+
+# vim /etc/patroni.yaml
+
+scope: postgres
+namespace: /pg_cluster/
+name: pg_node1
+restapi:
+    listen: pgha1:8008
+    connect_address: pgha1:8008
+etcd3:
+  hosts: 192.168.15.172:2379, 192.168.15.173:2379, 192.168.15.174:2379
+  protocol: https
+  cacert: /var/lib/pgsql/cert/etcd/ca_cert.pem
+  cert: /var/lib/pgsql/cert/etcd/etcd_cert.pem
+  key: /var/lib/pgsql/cert/etcd/etcd_key.pem
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        archive_mode: "on"
+        archive_timeout: 1800s
+        archive_command: mkdir -p ../wal_archive && test ! -f ../wal_archive/%f && cp %p ../wal_archive/%f
+      recovery_conf:
+        restore_command: cp ../wal_archive/%f %p
+  users:
+    replication:
+      username: replicator
+      password: replicator        
+        
+  initdb:
+  - auth-host: md5
+  - auth-local: trust
+  - encoding: UTF8
+  - data-checksums
+   
+  post_init:
+  - timescaledb-tune --quiet --yes --pg-config=/usr/pgsql-16/bin/pg_config
+  
+  post_bootstrap: psql -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replicator';"
+  
+  pg_hba:
+  - host replication replicator 127.0.0.1/32 md5
+  - host replication replicator 192.168.15.170/0 md5
+  - host replication replicator 192.168.15.171/0 md5
+  - host replication replicator 192.168.15.172/0 md5
+  - hostssl all all 192.168.15.0/24 password
+  
+  users:
+    admin:
+      password: admin
+      options:
+        - createrole
+        - createdb
+        
+postgresql:
+  listen: pgha1:5432
+  connect_address: pgha1:5432
+  data_dir: /usr/local/pgsql/data/
+  bin_dir: /usr/sbin/
+  pgpass: /tmp/pgpass
+  authentication:
+    replication:
+      username: replicator
+      password: replicator
+    superuser:
+      username: postgres
+      password: postgres
+  parameters:
+    unix_socket_directories: "/var/run/postgresql"
+    shared_preload_libraries: "timescaledb"
+    # Config de Tunning
+    shared_buffers: 4GB
+    work_mem: 16MB
+    maintenance_work_mem: 2GB
+    max_worker_processes: 16
+    effective_cache_size: 32GB
+    fsync: on
+    temp_buffers: 4MB
+    max_connections: 100
+    wal_level: hot_standby
+    hot_standby: "on"
+    wal_keep_segments: 8
+    max_wal_senders: 10
+    max_replication_slots: 10
+    max_prepared_transactions: 0
+    max_locks_per_transaction: 64
+    wal_log_hints: "on"
+    track_commit_timestamp: "on"
+    timescaledb.telemetry_level: "off"  # Adicione isto para o TimescaleDB    
+    # config de Auth SSL
+    ssl: true
+    ssl_ca_file: /var/lib/pgsql/cert/root.crt
+    ssl_cert_file: /var/lib/pgsql/cert/server.crt
+    ssl_ciphers: HIGH:!aNULL
+    ssl_crl_file: ''
+    ssl_key_file: /var/lib/pgsql/cert/server.key
+    ssl_min_protocol_version: TLSv1.3
+    ssl_passphrase_command: This is only test
+    ssl_prefer_server_ciphers: true
+tags:
+    nofailover: false
+    noloadbalance: false
+    clonefrom: false
+    nosync: false
+
+# mkdir -p /var/lib/pgsql/cert
+
+# cd /var/lib/pgsql/cert
+
+# openssl genrsa -aes128 2048 > server.key 
+
+# ls -l | grep server.key
+
+# openssl rsa -in server.key -out server.key
+
+# openssl req -new -key server.key -days 365 -out server.crt -x509 
+
+# cp server.crt root.crt
+
+pgha1 ~]# scp -rp /var/lib/pgsql/cert/{root,server}.crt server.key root@pgha2:/var/lib/pgsql/cert
+
+pgha1 ~]# scp -pr /var/lib/pgsql/cert/{root,server}.crt server.key root@pgha3:/var/lib/pgsql/cert
+
+pghaproxy ~]# scp -p /etc/etcd/cert/{ca_cert,etcd_cert,etcd_key}.pem root@pgha1:/var/lib/pgsql/cert/etcd
+
+pghaproxy ~]# scp -p /etc/etcd/cert/{ca_cert,etcd_cert,etcd_key}.pem root@pgha2:/var/lib/pgsql/cert/etcd
+
+pghaproxy ~]# scp -p /etc/etcd/cert/{ca_cert,etcd_cert,etcd_key}.pem root@pgha3:/var/lib/pgsql/cert/etcd
+
+# chown -R postgres:postgres /etc/patroni.yaml
+# chmod 0740 /etc/patroni.yaml
+
+# chown -R postgres:postgres /var/lib/pgsql/cert/
+# chmod 0740 -R /var/lib/pgsql/cert/
+# chmod 0600 /var/lib/pgsql/cert/server.key
+
+# chown -R postgres:postgres /var/lib/pgsql/cert/etcd
+# chmod 0740 -R /var/lib/pgsql/cert/etcd
+
+# ls -la /var/lib/pgsql/cert/
+
+# systemctl daemon-reload
+
+# systemctl enable --now patroni.service
+
+# systemctl status patroni
+
+# su - postgres
+
+$ patronictl -c /etc/patroni.yaml list
+
+Scrips para o pgha2:
+
+# vim /etc/patroni.yaml
+
+scope: postgres
+namespace: /pg_cluster/
+name: pg_node2
+restapi:
+    listen: pgha2:8008
+    connect_address: pgha2:8008
+etcd3:
+  hosts: 192.168.15.172:2379, 192.168.15.173:2379, 192.168.15.174:2379
+  protocol: https
+  cacert: /var/lib/pgsql/cert/etcd/ca_cert.pem
+  cert: /var/lib/pgsql/cert/etcd/etcd_cert.pem
+  key: /var/lib/pgsql/cert/etcd/etcd_key.pem
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        archive_mode: "on"
+        archive_timeout: 1800s
+        archive_command: mkdir -p ../wal_archive && test ! -f ../wal_archive/%f && cp %p ../wal_archive/%f
+      recovery_conf:
+        restore_command: cp ../wal_archive/%f %p
+  users:
+    replication:
+      username: replicator
+      password: replicator        
+        
+  initdb:
+  - auth-host: md5
+  - auth-local: trust
+  - encoding: UTF8
+  - data-checksums
+   
+  post_init:
+  - timescaledb-tune --quiet --yes --pg-config=/usr/pgsql-16/bin/pg_config
+  
+  post_bootstrap: psql -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replicator';"
+  
+  pg_hba:
+  - host replication replicator 127.0.0.1/32 md5
+  - host replication replicator 192.168.15.170/0 md5
+  - host replication replicator 192.168.15.171/0 md5
+  - host replication replicator 192.168.15.172/0 md5
+  - hostssl all all 192.168.15.0/24 password
+  
+  users:
+    admin:
+      password: admin
+      options:
+        - createrole
+        - createdb
+    
+postgresql:
+  listen: pgha2:5432
+  connect_address: pgha2:5432
+  data_dir: /usr/local/pgsql/data/
+  bin_dir: /usr/sbin/
+  pgpass: /tmp/pgpass
+  authentication:
+    replication:
+      username: replicator
+      password: replicator
+    superuser:
+      username: postgres
+      password: postgres
+  parameters:
+    unix_socket_directories: "/var/run/postgresql"
+    shared_preload_libraries: "timescaledb"
+    # Config de Tunning      
+    shared_buffers: 4GB
+    work_mem: 16MB
+    maintenance_work_mem: 2GB
+    max_worker_processes: 16
+    effective_cache_size: 32GB
+    fsync: on
+    listen_addresses: "*"
+    temp_buffers: 4MB
+    max_connections: 100
+    wal_level: hot_standby
+    hot_standby: "on"
+    wal_keep_segments: 8
+    max_wal_senders: 10
+    max_replication_slots: 10
+    max_prepared_transactions: 0
+    max_locks_per_transaction: 64
+    wal_log_hints: "on"
+    track_commit_timestamp: "on"
+    timescaledb.telemetry_level: "off"  # Adicione isto para o TimescaleDB    
+    # config de Auth SSL
+    ssl: true
+    ssl_ca_file: /var/lib/pgsql/cert/root.crt
+    ssl_cert_file: /var/lib/pgsql/cert/server.crt
+    ssl_ciphers: HIGH:!aNULL
+    ssl_crl_file: ''
+    ssl_key_file: /var/lib/pgsql/cert/server.key
+    ssl_min_protocol_version: TLSv1.3
+    ssl_passphrase_command: This is only test
+    ssl_prefer_server_ciphers: true
+tags:
+    nofailover: false
+    noloadbalance: false
+    clonefrom: false
+    nosync: false
+
+Scrips para o pgha3:
+
+# vim /etc/patroni.yaml
+
+scope: postgres
+namespace: /pg_cluster/
+name: pg_node3
+restapi:
+    listen: pgha3:8008
+    connect_address: pgha3:8008
+etcd3:
+  hosts: 192.168.15.172:2379, 192.168.15.173:2379, 192.168.15.174:2379
+  protocol: https
+  cacert: /var/lib/pgsql/cert/etcd/ca_cert.pem
+  cert: /var/lib/pgsql/cert/etcd/etcd_cert.pem
+  key: /var/lib/pgsql/cert/etcd/etcd_key.pem
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        archive_mode: "on"
+        archive_timeout: 1800s
+        archive_command: mkdir -p ../wal_archive && test ! -f ../wal_archive/%f && cp %p ../wal_archive/%f
+      recovery_conf:
+        restore_command: cp ../wal_archive/%f %p
+  users:
+    replication:
+      username: replicator
+      password: replicator        
+        
+  initdb:
+  - auth-host: md5
+  - auth-local: trust
+  - encoding: UTF8
+  - data-checksums
+   
+  post_init:
+  - timescaledb-tune --quiet --yes --pg-config=/usr/pgsql-16/bin/pg_config
+  
+  post_bootstrap: psql -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replicator';"
+  
+  pg_hba:
+  - host replication replicator 127.0.0.1/32 md5
+  - host replication replicator 192.168.15.170/0 md5
+  - host replication replicator 192.168.15.171/0 md5
+  - host replication replicator 192.168.15.172/0 md5
+  - hostssl all all 192.168.15.0/24 password
+  
+  users:
+    admin:
+      password: admin
+      options:
+        - createrole
+        - createdb
+    
+postgresql:
+  listen: pgha3:5432
+  connect_address: pgha3:5432
+  data_dir: /usr/local/pgsql/data/
+  bin_dir: /usr/sbin/
+  pgpass: /tmp/pgpass
+  authentication:
+    replication:
+      username: replicator
+      password: replicator
+    superuser:
+      username: postgres
+      password: postgres
+  parameters:
+    unix_socket_directories: "/var/run/postgresql"
+    shared_preload_libraries: "timescaledb"
+    # Config de Tunning      
+    shared_buffers: 4GB
+    work_mem: 16MB
+    maintenance_work_mem: 2GB
+    max_worker_processes: 16
+    effective_cache_size: 32GB
+    fsync: on
+    postgresql.listen: "*"
+    temp_buffers: 4MB
+    max_connections: 100
+    wal_level: hot_standby
+    hot_standby: "on"
+    max_connections: 100
+    max_worker_processes: 8
+    wal_keep_segments: 8
+    max_wal_senders: 10
+    max_replication_slots: 10
+    max_prepared_transactions: 0
+    max_locks_per_transaction: 64
+    wal_log_hints: "on"
+    track_commit_timestamp: "on"
+    timescaledb.telemetry_level: "off"  # Adicione isto para o TimescaleDB
+    # config de Auth SSL
+    ssl: true
+    ssl_ca_file: /var/lib/pgsql/cert/root.crt
+    ssl_cert_file: /var/lib/pgsql/cert/server.crt
+    ssl_ciphers: HIGH:!aNULL
+    ssl_crl_file: ''
+    ssl_key_file: /var/lib/pgsql/cert/server.key
+    ssl_min_protocol_version: TLSv1.3
+    ssl_passphrase_command: This is only test
+    ssl_prefer_server_ciphers: true         
+tags:
+    nofailover: false
+    noloadbalance: false
+    clonefrom: false
+    nosync: false
+    
+# systemctl daemon-reload
+
+# systemctl enable --now patroni.service
+
+# systemctl status patroni
+
+# psql -h 192.168.15.170 -p 5432 -U postgres
+
+postgres=# SELECT * FROM pg_stat_ssl;
+
+
+
+
+
+

@@ -1,0 +1,172 @@
+// Aula 2 - Preparação para o Zabbix HA
+
+# vim /etc/hosts
+
+192.168.15.175 ha1
+192.168.15.176 ha2
+192.168.15.180 db
+
+# sed -i "s/SELINUX=enforcing/SELINUX=disabled/" /etc/selinux/config
+
+# setenforce 0
+
+# systemctl disable --now firewalld.service
+
+# dnf install -y postgresql
+
+# psql -h 192.168.15.180 -p 5000 -U postgres
+
+=# CREATE DATABASE zabbix;
+=# CREATE USER zabbix WITH ENCRYPTED PASSWORD 'zabbix';
+=# ALTER DATABASE zabbix OWNER TO zabbix;
+=# \c zabbix
+=> CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+=# \q
+
+# rpm -Uvh https://repo.zabbix.com/zabbix/7.0/rocky/9/x86_64/zabbix-release-7.0-4.el9.noarch.rpm
+
+# dnf clean all 
+
+# dnf install -y zabbix-server-pgsql zabbix-web-pgsql zabbix-apache-conf zabbix-sql-scripts zabbix-selinux-policy zabbix-agent 
+
+# zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz | sudo -u zabbix psql -h 192.168.15.180 -p 5000 zabbix
+
+# cat /usr/share/zabbix-sql-scripts/postgresql/timescaledb/schema.sql | sudo -u zabbix psql -h 192.168.15.180 -p 5000 zabbix
+
+# vim /etc/zabbix/zabbix_server.conf
+
+DBHost=192.168.15.180
+DBPassword=zabbix
+DBPort=5000
+DBUser=zabbix
+
+AllowUnsupportedDBVersions=1
+HANodeName=ha1
+NodeAddress=192.168.15.175
+
+# vim /etc/zabbix/zabbix_server.conf
+
+DBHost=192.168.15.180
+DBPassword=zabbix
+DBPort=5000
+DBUser=zabbix
+
+AllowUnsupportedDBVersions=1
+HANodeName=ha1
+NodeAddress=192.168.15.175
+
+--- ha2
+
+AllowUnsupportedDBVersions=1
+HANodeName=ha2
+NodeAddress=192.168.15.176
+
+# vim /etc/zabbix/zabbix_agentd.conf
+
+Hostname=zabbix
+Server=192.168.15.175,192.168.15.176
+ServerActive=192.168.15.175,192.168.15.176
+
+Para o zabbix ha2:
+
+Hostname=zabbix2
+Server=192.168.15.175,192.168.15.176
+ServerActive=192.168.15.175,192.168.15.176
+
+# systemctl enable --now zabbix-server zabbix-agent
+# systemctl status zabbix-server zabbix-agent
+
+# dnf install -y keepalived
+
+# vim /etc/keepalived/keepalived.conf
+
+vrrp_track_process chk_apache_apache2 {
+	process apache2
+	weight 10
+}
+
+vrrp_instance ZBX_1 {
+	state MASTER
+	interface enp0s3
+	virtual_router_id 51
+	priority 244
+	advert_int 1
+	authentication {
+		auth_type PASS
+		auth_pass zabbix
+}
+
+track_process {
+	chk_apache_apache2
+}
+
+virtual_ipaddress {
+	192.168.15.182/24
+	}
+}
+
+Agora, vamos fazer com o 'ha2':
+
+# vim /etc/keepalived/keepalived.conf
+
+vrrp_track_process chk_apache_apache2 {
+	process apache2
+	weight 10
+}
+
+vrrp_instance ZBX_1 {
+	state BACKUP
+	interface enp0s3
+	virtual_router_id 51
+	priority 243
+	advert_int 1
+	authentication {
+		auth_type PASS
+		auth_pass zabbix
+}
+
+track_process {
+	chk_apache_apache2
+}
+
+virtual_ipaddress {
+	192.168.15.182/24
+	}
+}
+
+# systemctl enable --now httpd keepalived
+
+# systemctl status httpd keepalived
+
+# cat /var/log/zabbix/zabbix_server.log
+
+http://192.168.15.182/zabbix
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,73 @@
+// Aula 5 - Fazendo testes de failover e recuperação
+
+# dnf install -y postgresql
+
+# psql -h 192.168.15.180 -p 5000 -U postgres
+
+Senha: postgres
+
+=# SELECT inet_server_addr() AS hostname;
+
+=# CREATE TABLE links (
+	id SERIAL PRIMARY KEY,
+	url VARCHAR(255) NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	description VARCHAR (255),
+        last_update DATE
+);
+
+=# INSERT INTO links (url, name)
+VALUES('https://www.postgresql.org/','PostgreSQL Oficial');
+
+=# SELECT * FROM links;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

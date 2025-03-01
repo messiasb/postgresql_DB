@@ -1,0 +1,137 @@
+// Aula 2 - Configurações iniciais dos bancos de dados
+
+# vim /etc/hosts
+
+192.168.15.170  pgha1
+192.168.15.171  pgha2
+192.168.15.172  pgha3
+
+192.168.15.173  pghaproxy
+192.168.15.174  pghaproxy2
+----------------------------------------------------------------------------
+## UBUNTU ##
+
+sudo systemctl stop apparmor
+sudo systemctl disable apparmor
+
+## DEBIAN ##
+
+# sed -i "s/SELINUX=enforcing/SELINUX=disabled/" /etc/selinux/config
+
+# setenforce 0
+
+# systemctl disable --now firewalld.service ; init 6
+-----------------------------------------------------------------------------
+## UBUNTU ##
+
+** O comando abaixo adiciona o repositório correto para Ubuntu: **
+# sudo apt update && sudo apt install -y wget gnupg
+# wget -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/postgresql.asc
+# sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+** Após adicionar o repositório, instale o PostgreSQL 16 com: **
+# sudo apt update
+# sudo apt install -y postgresql-16 postgresql-client-16
+# psql --version
+# sudo systemctl enable --now postgresql
+# sudo systemctl start postgresql
+# sudo systemctl status postgresql
+# sudo -u postgres psql
+
+------------------------------------------------------------------------------
+## DEBIAN ##
+
+# sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+
+# dnf install -y postgresql16-server postgresql16
+
+-----------------------------------------------------------------------------
+## UBUNTU ##
+** No Ubuntu, você pode criar os links simbólicos para facilitar o acesso:
+# sudo ln -s /usr/lib/postgresql/16/bin/* /usr/local/bin/  -->> criando o link simbolico
+# which psql                                               -->> validando o link simbolico
+# psql --version                                           -->> validando a versão
+
+** Criar o diretório
+# sudo mkdir -p /usr/local/pgsql/data
+
+** Ajustar permissões para o usuário do PostgreSQL
+# sudo chmod 0750 -R /usr/local/pgsql/data
+# sudo chown postgres:postgres /usr/local/pgsql/data
+
+** Verificar as permissões
+# ls -la /usr/local/pgsql/
+
+***  Mover o diretório de dados e criar um link simbólico
+** Se quiser mover os dados existentes para /usr/local/pgsql/data/, faça:
+* Parar o PostgreSQL antes de mover os dados
+# sudo systemctl stop postgresql
+
+* Mover os dados para o novo local
+# sudo mv /var/lib/postgresql/16/main /usr/local/pgsql/data
+
+* Criar um link simbólico apontando para o novo local
+# sudo ln -s /usr/local/pgsql/data /var/lib/postgresql/16/main
+
+* Ajustar permissões novamente
+# sudo chown -R postgres:postgres /usr/local/pgsql/data
+# sudo chmod 0750 -R /usr/local/pgsql/data
+
+* Iniciar novamente o PostgreSQL
+# sudo systemctl start postgresql
+
+# sudo rm -rf /var/lib/postgresql/16/main
+
+
+-------------------------------------------------------------------------------
+## DEBIAN ##
+
+# ln -s /usr/pgsql-16/bin/* /usr/sbin/
+
+# which psql
+
+# mkdir -p /usr/local/pgsql
+
+# chown postgres:postgres /usr/local/pgsql
+
+# chmod 0750 -R /usr/local/pgsql
+
+# ls -la /usr/local/pgsql/
+
+# rm -rf /var/lib/pgsql/16/data
+
+# ln -s /usr/local/pgsql/data/ /var/lib/pgsql/16/
+
+# systemctl disable --now postgresql-16.service
+
+# sudo tee /etc/yum.repos.d/timescale_timescaledb.repo <<EOL
+[timescale_timescaledb]
+name=timescale_timescaledb
+baseurl=https://packagecloud.io/timescale/timescaledb/el/$(rpm -E %{rhel})/\$basearch
+repo_gpgcheck=1
+gpgcheck=0
+enabled=1
+gpgkey=https://packagecloud.io/timescale/timescaledb/gpgkey
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+EOL
+
+# dnf -y install timescaledb-2-postgresql-16
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,214 @@
+// Aula 4 - Instalando o haproxy
+
+# dnf -y install epel-release
+
+# dnf install -y keepalived
+
+# cd /etc/keepalived
+
+# mv keepalived.conf keepalived.conf.bk
+
+# vim keepalived.conf
+
+global_defs {
+}
+vrrp_script chk_haproxy {
+    script "/usr/bin/killall -0 haproxy" # widely used idiom
+    interval 2 # check every 2 seconds
+    weight 2 # add 2 points of prio if OK
+}
+vrrp_instance VI_1 {
+    interface enp0s3
+    state MASTER # or "BACKUP" on backup 
+    priority 101 # 101 on master, 100 on backup
+    virtual_router_id 51
+    authentication {
+        auth_type PASS
+        auth_pass Xtr54sdD
+    }
+    virtual_ipaddress {
+        192.168.15.180
+    }
+    unicast_src_ip 192.168.15.173  # haproxy MASTER
+    unicast_peer {
+    192.168.15.174                 # haproxy BACKUP
+    }
+    track_script {
+        chk_haproxy
+    }
+}
+
+Script para o backup "pgha2proxy":
+
+# cd /etc/keepalived
+
+# mv keepalived.conf keepalived.conf.bk
+
+# vim /etc/keepalived/keepalived.conf 
+
+global_defs {
+}
+vrrp_script chk_haproxy {
+    script "/usr/bin/killall -0 haproxy" # widely used idiom
+    interval 2 # check every 2 seconds
+    weight 2 # add 2 points of prio if OK
+}
+vrrp_instance VI_1 {
+    interface enp0s3
+    state BACKUP # or "BACKUP" on backup 
+    priority 100 # 101 on master, 100 on backup
+    virtual_router_id 51
+    authentication {
+        auth_type PASS
+        auth_pass Xtr54sdD
+    }
+    virtual_ipaddress {
+        192.168.15.180
+    }
+    unicast_src_ip 192.168.15.174  # haproxy BACKUP 
+    unicast_peer { 192.168.15.173  # haproxy MASTER
+    }
+    track_script {
+        chk_haproxy
+    }
+}
+
+# systemctl enable --now keepalived
+
+# systemctl status keepalived
+
+# dnf install haproxy -y
+
+# cd /usr/lib/systemd/system/
+
+# vim haproxy.service
+
+[Unit]
+Description=HAProxy Load Balancer
+Documentation=man:haproxy(1)
+# allows us to do millisecond level restarts without triggering alert in Systemd
+#StartLimitInterval=0
+#StartLimitBurst=0
+After=network.target syslog.service
+Wants=syslog.service
+[Service]
+Environment="CONFIG=/etc/haproxy/haproxy.cfg" "PIDFILE=/run/haproxy.pid"
+# EXTRAOPTS and RELOADOPS come from this default file
+# EnvironmentFile=-/etc/default/haproxy
+ExecStartPre=/usr/sbin/haproxy -f $CONFIG -c -q
+ExecStart=/usr/sbin/haproxy -W -f $CONFIG -p $PIDFILE $EXTRAOPTS
+ExecReload=/usr/sbin/haproxy -f $CONFIG -c -q $EXTRAOPTS $RELOADOPTS
+ExecReload=/bin/kill -USR2 $MAINPID
+KillMode=mixed
+#Restart=always
+#Type=forking
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+
+# mv /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bk
+
+# vim /etc/haproxy/haproxy.cfg
+
+global
+    maxconn 100
+defaults
+    log global
+    mode tcp
+    retries 2
+    timeout client 30m
+    timeout connect 4s
+    timeout server 30m
+    timeout check 5s
+listen stats
+    mode http
+    bind *:7000
+    stats enable
+    stats uri /
+listen production
+    bind 192.168.15.180:5000
+    option httpchk OPTIONS/master
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server pgha1 192.168.15.170:5432 maxconn 100 check port 8008
+    server pgha2 192.168.15.171:5432 maxconn 100 check port 8008
+    server pgha3 192.168.15.172:5432 maxconn 100 check port 8008
+listen standby
+    bind 192.168.15.180:5001
+    option httpchk OPTIONS/replica
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server pgha1 192.168.15.170:5432 maxconn 100 check port 8008
+    server pgha2 192.168.15.171:5432 maxconn 100 check port 8008
+    server pgha3 192.168.15.172:5432 maxconn 100 check port 8008
+    
+# systemctl daemon-reload
+
+# systemctl enable --now haproxy
+
+# systemctl status haproxy
+
+# journalctl -e | grep Keepalived
+
+# vim /etc/haproxy/haproxy.cfg
+
+global
+    maxconn 100
+defaults
+    log global
+    mode tcp
+    retries 2
+    timeout client 30m
+    timeout connect 4s
+    timeout server 30m
+    timeout check 5s
+listen stats
+    mode http
+    bind *:7000
+    stats enable
+    stats uri /
+listen production
+    bind 192.168.15.180:5000
+    option httpchk OPTIONS/master
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server pgha1 192.168.15.170:5432 maxconn 100 check port 8008
+    server pgha2 192.168.15.171:5432 maxconn 100 check port 8008
+    server pgha3 192.168.15.172:5432 maxconn 100 check port 8008
+listen standby
+    bind 192.168.15.180:5001
+    option httpchk OPTIONS/replica
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server pgha1 192.168.15.170:5432 maxconn 100 check port 8008
+    server pgha2 192.168.15.171:5432 maxconn 100 check port 8008
+    server pgha3 192.168.15.172:5432 maxconn 100 check port 8008
+
+# ss -tunelp | grep 7000
+
+# systemctl daemon-reload
+
+# systemctl enable --now haproxy
+
+# systemctl status haproxy 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
