@@ -19,7 +19,7 @@ jobs:
         with:
           host: 201.54.2.74
           username: ubuntu
-          key: key: "${{ secrets.ID_ED25519 }}"
+          key: "${{ secrets.ID_ED25519 }}"
           script: |
             sudo apt update
             sudo apt install -y postgresql
