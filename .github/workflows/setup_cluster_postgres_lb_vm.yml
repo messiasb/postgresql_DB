@@ -5,3 +5,4 @@
     ssh -i private_key.pem -o StrictHostKeyChecking=no ubuntu@201.54.2.74 "echo 'Conexão SSH bem-sucedida!'"
 
 
+
