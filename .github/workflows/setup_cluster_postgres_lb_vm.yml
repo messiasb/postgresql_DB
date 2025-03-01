@@ -1,5 +1,19 @@
-- name: Testar Chave Privada SSH
-  run: |
-    echo "${{ secrets.ID_ED25519 }}" > private_key.pem
-    chmod 600 private_key.pem
-    ssh -i private_key.pem -o StrictHostKeyChecking=no ubuntu@201.54.2.74 "echo 'Conexão SSH bem-sucedida!'"
+name: Testar Chave Privada SSH
+
+on:
+  workflow_dispatch:  # Permite rodar manualmente
+
+jobs:
+  test-ssh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Testar Conexão SSH com a Chave do GitHub Secrets
+        run: |
+          echo "${{ secrets.ID_ED25519 }}" > private_key.pem
+          chmod 600 private_key.pem
+          ssh -i private_key.pem -o StrictHostKeyChecking=no ubuntu@201.54.2.74 "echo 'Conexão SSH bem-sucedida!'"
+
