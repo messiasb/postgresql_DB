@@ -1,19 +1,11 @@
-name: Teste de Conexão SSH na Magalu Cloud
-
-on:
-  workflow_dispatch:  # Permite rodar manualmente
-
-jobs:
-  test-ssh:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Testar Conexão SSH na Magalu Cloud
-        uses: appleboy/ssh-action@v0.1.7
-        with:
-          host: "201.54.2.74"
-          username: "ubuntu"
-          key: "${{ secrets.ID_ED25519 }}"
-          script: |
-            echo "Conexão SSH bem-sucedida!"
+- name: Testar Conexão SSH com Debug
+  uses: appleboy/ssh-action@v0.1.7
+  with:
+    host: "201.54.2.74"
+    username: "ubuntu"
+    key: "${{ secrets.ID_ED25519 }}"
+    port: 22  # Troque se precisar
+    debug: true
+    script: |
+      echo "Conexão SSH bem-sucedida!"
 
