@@ -1,0 +1,29 @@
+name: Configurar VM Magalu Cloud
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  setup-vm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar Servidor na Magalu Cloud via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: 201.54.2.74
+          username: ubuntu
+          key: key: "${{ secrets.ID_ED25519 }}"
+          script: |
+            sudo apt update
+            sudo apt install -y postgresql
+            sudo systemctl enable --now postgresql
+            sudo -u postgres psql -c "CREATE USER dev WITH PASSWORD 'devpass';"
+            sudo -u postgres psql -c "CREATE DATABASE meu_banco OWNER dev;"
+
