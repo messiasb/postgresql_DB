@@ -3,6 +3,9 @@
     echo "${{ secrets.ID_ED25519 }}" > private_key.pem
     chmod 600 private_key.pem
     ssh -i private_key.pem -o StrictHostKeyChecking=no ubuntu@201.54.2.74 "echo 'Conexão SSH bem-sucedida!'"
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> 0e62a5e (Corrigindo nome do Secret SSH)
 
